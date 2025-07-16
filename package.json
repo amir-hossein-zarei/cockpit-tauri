@@ -87,6 +87,7 @@
     "@electron/notarize": "^3.0.1",
     "@pinia/testing": "^0.0.12",
     "@rushstack/eslint-patch": "^1.1.0",
+    "@tauri-apps/cli": "^2.6.2",
     "@types/electron-store": "^3.2.2",
     "@types/file-saver": "^2.0.5",
     "@types/jsdom": "^16.2.14",
