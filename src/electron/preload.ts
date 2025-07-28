@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-import type { ElectronSDLControllerStateEventData } from '@/types/joystick'
+import type { ElectronSDLJoystickControllerStateEventData } from '@/types/joystick'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getInfoOnSubnets: () => ipcRenderer.invoke('get-info-on-subnets'),
@@ -14,8 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-not-available', (_event, info) => callback(info)),
   onDownloadProgress: (callback: (info: any) => void) =>
     ipcRenderer.on('download-progress', (_event, info) => callback(info)),
-  onElectronSDLControllerStateChange: (callback: (data: ElectronSDLControllerStateEventData) => void) =>
-    ipcRenderer.on('sdl-controller-state', (_event, data) => callback(data)),
+  onElectronSDLControllerJoystickStateChange: (callback: (data: ElectronSDLJoystickControllerStateEventData) => void) =>
+    ipcRenderer.on('sdl-controller-joystick-state', (_event, data) => callback(data)),
   checkSDLStatus: () => ipcRenderer.invoke('check-sdl-status'),
   downloadUpdate: () => ipcRenderer.send('download-update'),
   installUpdate: () => ipcRenderer.send('install-update'),
@@ -40,4 +40,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openCockpitFolder: () => ipcRenderer.invoke('open-cockpit-folder'),
   openVideoFolder: () => ipcRenderer.invoke('open-video-folder'),
   captureWorkspace: (rect?: Electron.Rectangle) => ipcRenderer.invoke('capture-workspace', rect),
+  serialListPorts: () => ipcRenderer.invoke('serial-list-ports'),
+  serialOpen: (path: string, baudRate?: number) => ipcRenderer.invoke('serial-open', { path, baudRate }),
+  serialWrite: (path: string, data: Uint8Array) => ipcRenderer.invoke('serial-write', { path, data }),
+  serialClose: (path: string) => ipcRenderer.invoke('serial-close', { path }),
+  serialIsOpen: (path: string) => ipcRenderer.invoke('serial-is-open', { path }),
+  /* eslint-disable jsdoc/require-jsdoc */
+  onSerialData: (callback: (data: { path: string; data: number[] }) => void) => {
+    ipcRenderer.on('serial-data', (_event, data) => callback(data))
+  },
+  systemLog: (level: string, message: string) => ipcRenderer.send('system-log', { level, message }),
+  getElectronLogs: () => ipcRenderer.invoke('get-electron-logs'),
+  getElectronLogContent: (logName: string) => ipcRenderer.invoke('get-electron-log-content', logName),
+  deleteElectronLog: (logName: string) => ipcRenderer.invoke('delete-electron-log', logName),
+  deleteOldElectronLogs: () => ipcRenderer.invoke('delete-old-electron-logs'),
 })

@@ -97,11 +97,15 @@ const props = defineProps<{
 
 const miniWidget = toRefs(props).miniWidget
 
-const potentiometerValue = ref(0)
-const rotationAngle = ref(-150)
+const defaultMinValue = 0
+const defaultMaxValue = 100
+const potentiometerValue = ref(defaultMinValue)
+const rotationRange = 300
+const rotationLimit = rotationRange / 2
+const rotationAngle = ref(-rotationLimit)
 let listenerId: string | undefined
 const isEditingValue = ref(false)
-const editableValue = ref(String(Math.round(potentiometerValue.value) || 0))
+const editableValue = ref(String(Math.round(potentiometerValue.value) || defaultMinValue))
 
 watch(
   () => widgetStore.miniWidgetManagerVars(miniWidget.value.hash).configMenuOpen,
@@ -116,22 +120,27 @@ watch(
   { immediate: true, deep: true }
 )
 
+const assignedMinValue = computed(() => {
+  return Number(miniWidget.value.options.layout?.minValue) || defaultMinValue
+})
+
+const assignedMaxValue = computed(() => {
+  return Number(miniWidget.value.options.layout?.maxValue) || defaultMaxValue
+})
+
 const setDialValue = (value: number | string | undefined): void => {
   let numValue: number
   if (value === undefined || value === null || isNaN(Number(value))) {
-    numValue = Number(miniWidget.value.options.layout?.minValue) || 0
+    numValue = assignedMinValue.value
   } else {
     numValue = Number(value)
   }
 
   potentiometerValue.value = numValue
 
-  const rotationRange = 300
-  const minVal = Number(miniWidget.value.options.layout?.minValue) || 0
-  const maxVal = Number(miniWidget.value.options.layout?.maxValue) || 100
-  const valueRange = maxVal - minVal
+  const valueRange = assignedMaxValue.value - assignedMinValue.value
 
-  rotationAngle.value = ((numValue - minVal) / valueRange) * rotationRange - 150
+  rotationAngle.value = ((numValue - assignedMinValue.value) / valueRange) * rotationRange - rotationLimit
 }
 
 const startListeningDataLakeVariable = (): void => {
@@ -155,10 +164,7 @@ watch(
 )
 
 watch(
-  () => [
-    Number(miniWidget.value.options.layout?.minValue) || 0,
-    Number(miniWidget.value.options.layout?.maxValue) || 100,
-  ],
+  () => [assignedMinValue.value, assignedMaxValue.value],
   ([minVal]) => {
     potentiometerValue.value = minVal
     setDialValue(potentiometerValue.value)
@@ -171,8 +177,8 @@ onMounted(() => {
     miniWidget.value.isCustomElement = true
     widgetStore.updateElementOptions(miniWidget.value.hash, {
       layout: {
-        minValue: 0,
-        maxValue: 100,
+        minValue: defaultMinValue,
+        maxValue: defaultMaxValue,
         size: 'small',
         showValue: true,
         align: 'center',
@@ -202,9 +208,6 @@ const sizeClass = computed(() => {
   }
 })
 
-let lastMouseAngle = 0
-let lastUnwrappedAngle = 0
-
 const updateDataLakeVariable = (): void => {
   if (miniWidget.value.options.dataLakeVariable && !widgetStore.editingMode) {
     const roundedValue = Math.round(potentiometerValue.value)
@@ -212,6 +215,8 @@ const updateDataLakeVariable = (): void => {
     setDataLakeVariableData(miniWidget.value.options.dataLakeVariable.name, roundedValue)
   }
 }
+
+let lastKnobAngle = 0
 
 const startDrag = (event: MouseEvent): void => {
   event.preventDefault()
@@ -221,39 +226,24 @@ const startDrag = (event: MouseEvent): void => {
   const centerX = rect.left + rect.width / 2
   const centerY = rect.top + rect.height / 2
 
-  const initialMouseAngle = (Math.atan2(event.clientY - centerY, event.clientX - centerX) * 180) / Math.PI
-
-  lastMouseAngle = initialMouseAngle
-  lastUnwrappedAngle = initialMouseAngle
-
-  const initialKnobAngle = rotationAngle.value
-
-  const offsetAngle = initialKnobAngle - initialMouseAngle
-
   const handleDrag = (moveEvent: MouseEvent): void => {
-    const rawAngle = (Math.atan2(moveEvent.clientY - centerY, moveEvent.clientX - centerX) * 180) / Math.PI
+    // Calculate clockwise angle from top of dial (positive Y is downwards)
+    const rawAngle = (Math.atan2(moveEvent.clientX - centerX, centerY - moveEvent.clientY) * 180) / Math.PI
 
-    let angleDiff = rawAngle - lastMouseAngle
-    if (angleDiff > 180) angleDiff -= 360
-    else if (angleDiff < -180) angleDiff += 360
+    // "Break" the limit endstop if the knob is dragged past it, all the way to the top (to avoid spool-up)
+    if (Math.abs(rawAngle - lastKnobAngle) > rotationLimit) {
+      return
+    }
 
-    const unwrappedAngle = lastUnwrappedAngle + angleDiff
-
-    lastMouseAngle = rawAngle
-    lastUnwrappedAngle = unwrappedAngle
-
-    let newRotationAngle = unwrappedAngle + offsetAngle
-
-    newRotationAngle = Math.max(-150, Math.min(150, newRotationAngle))
-
+    // Apply start and end limits, for visual clarity
+    let newRotationAngle = Math.max(-rotationLimit, Math.min(rotationLimit, rawAngle))
     rotationAngle.value = newRotationAngle
+    lastKnobAngle = newRotationAngle
 
-    const rotationRange = 300
-    const minVal = miniWidget.value.options.layout?.minValue || 0
-    const maxVal = miniWidget.value.options.layout?.maxValue || 100
-    const valueRange = maxVal - minVal
-
-    potentiometerValue.value = ((newRotationAngle + 150) / rotationRange) * valueRange + minVal
+    // Convert dial angle input to output value range
+    const valueRange = assignedMaxValue.value - assignedMinValue.value
+    potentiometerValue.value =
+      ((newRotationAngle + rotationLimit) / rotationRange) * valueRange + assignedMinValue.value
 
     if (miniWidget.value.options.dataLakeVariable) {
       updateDataLakeVariable()
@@ -270,16 +260,14 @@ const startDrag = (event: MouseEvent): void => {
 }
 
 const addDialValue = (): void => {
-  const maxVal = miniWidget.value.options.layout?.maxValue || 100
-  if (potentiometerValue.value < maxVal) {
+  if (potentiometerValue.value < assignedMaxValue.value) {
     setDialValue(potentiometerValue.value + 1)
     updateDataLakeVariable()
   }
 }
 
 const subtractDialValue = (): void => {
-  const minVal = miniWidget.value.options.layout?.minValue || 0
-  if (potentiometerValue.value > minVal) {
+  if (potentiometerValue.value > assignedMinValue.value) {
     setDialValue(potentiometerValue.value - 1)
     updateDataLakeVariable()
   }
@@ -289,19 +277,16 @@ const startEditingValue = (): void => {
   if (widgetStore.editingMode) return
   isEditingValue.value = true
 
-  editableValue.value = String(Math.round(potentiometerValue.value) || 0)
+  editableValue.value = String(Math.round(potentiometerValue.value) || defaultMinValue)
 }
 
 const finishEditingValue = (): void => {
   let newValue = parseFloat(editableValue.value)
   if (isNaN(newValue)) {
-    newValue = Math.round(potentiometerValue.value) || 0
+    newValue = Math.round(potentiometerValue.value) || defaultMinValue
   }
-  const minVal = miniWidget.value.options.layout?.minValue || 0
-  const maxVal = miniWidget.value.options.layout?.maxValue || 100
 
-  if (newValue > maxVal) newValue = maxVal
-  if (newValue < minVal) newValue = minVal
+  newValue = Math.max(assignedMinValue.value, Math.min(newValue, assignedMaxValue.value))
 
   setDialValue(newValue)
   if (miniWidget.value.options.dataLakeVariable && !widgetStore.editingMode) {

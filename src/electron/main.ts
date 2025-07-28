@@ -1,19 +1,18 @@
 import { app, BrowserWindow, protocol, screen } from 'electron'
-import logger from 'electron-log'
 import { join } from 'path'
 
 import { setupAutoUpdater } from './services/auto-update'
 import store from './services/config-store'
+import { setupElectronLogService } from './services/electron-log'
 import { setupJoystickMonitoring } from './services/joystick'
-import { setupMemoryService } from './services/memory'
 import { setupNetworkService } from './services/network'
+import { setupResourceMonitoringService } from './services/resource-monitoring'
+import { serialService } from './services/serial'
 import { setupFilesystemStorage } from './services/storage'
 import { setupWorkspaceService } from './services/workspace'
 
-// If the app is packaged, push logs to the system instead of the console
-if (app.isPackaged) {
-  Object.assign(console, logger.functions)
-}
+// Setup the logger service as soon as possible to avoid different behaviors across runtime
+setupElectronLogService()
 
 export const ROOT_PATH = {
   dist: join(__dirname, '..'),
@@ -38,6 +37,8 @@ function createWindow(): void {
     x: store.get('windowBounds')?.x ?? screen.getPrimaryDisplay().bounds.x,
     y: store.get('windowBounds')?.y ?? screen.getPrimaryDisplay().bounds.y,
   })
+
+  serialService.setMainWindow(mainWindow)
 
   mainWindow.on('move', () => {
     const windowBounds = mainWindow!.getBounds()
@@ -78,7 +79,7 @@ protocol.registerSchemesAsPrivileged([
 
 setupFilesystemStorage()
 setupNetworkService()
-setupMemoryService()
+setupResourceMonitoringService()
 setupWorkspaceService()
 setupJoystickMonitoring()
 
